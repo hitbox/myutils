@@ -1,5 +1,7 @@
 # myutils
 
+Utilities I find useful.
+
 ## patsort
 
 Sort filenames by a regex pattern key.
