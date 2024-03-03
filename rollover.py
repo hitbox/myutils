@@ -41,10 +41,7 @@ def dry_rename(src, dst):
 def dry_copy(src, dst):
     print(f'copy {src} -> {dst}')
 
-def main(argv=None):
-    """
-    File rollover utility
-    """
+def argument_parser():
     parser = argparse.ArgumentParser(
         description = main.__doc__,
         prog = 'rollover',
@@ -54,21 +51,28 @@ def main(argv=None):
         action = 'store_true',
         help = 'Dry run.'
     )
-    parser.add_argument('-k', '--keep',
+    parser.add_argument('--no-keep',
         action = 'store_true',
-        help = 'Keep original source file.'
+        help = 'Do not keep original file.'
     )
     # TODO
     # - automatic count plus one for infinite rollover count.
     parser.add_argument('-c', '--count',
-        default = 10,
+        default = 99,
         help = 'Count of rollover backups to keep. Ex.: file.txt.1, file.txt.2,'
             ' ..., file.txt.9 for the default of %(default)s.'
     )
+    return parser
+
+def main(argv=None):
+    """
+    File rollover utility
+    """
+    parser = argument_parser()
     args = parser.parse_args(argv)
     kwargs = dict(
         backup_count = args.count,
-        keep_source = args.keep,
+        keep_source = not args.no_keep,
     )
     if args.dry:
         kwargs.update(
