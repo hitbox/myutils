@@ -24,7 +24,7 @@ def walk_files(root, exclude=None):
                 continue
             yield Path(os.path.join(dirpath, filename))
 
-def run(root_path, dry_run=False, exclude=None):
+def run(root_path, dry_run=False, exclude=None, report=False):
     """
     Update directories of `root_path` mtime to that of its newest file.
     """
@@ -40,12 +40,12 @@ def run(root_path, dry_run=False, exclude=None):
         if newest_file.stat().st_mtime <= child_dir.stat().st_mtime:
             # skip for newest file is not newer than directory
             continue
-        if dry_run:
+        if report:
             print(child_dir)
             print(f'\t{newest_file}')
             print(f'\tParent: {datetime.datetime.fromtimestamp(child_dir.stat().st_mtime)}')
             print(f'\tNewest: {datetime.datetime.fromtimestamp(newest_file.stat().st_mtime)}')
-        else:
+        if not dry_run:
             # update mtime, keeping atime
             atime = child_dir.stat().st_atime
             newest_mtime = newest_file.stat().st_mtime
@@ -54,10 +54,7 @@ def run(root_path, dry_run=False, exclude=None):
 def root_type(string):
     return Path(string).resolve()
 
-def main(argv=None):
-    """
-    Update directories to their newest file's datetime.
-    """
+def argument_parser():
     parser = argparse.ArgumentParser(
         description = main.__doc__,
     )
@@ -65,7 +62,7 @@ def main(argv=None):
         '--root',
         type = root_type,
         default = '.',
-        help = 'Root directory. Default: %(default)s.',
+        help = 'Root directory. Defaults to current directory.',
     )
     parser.add_argument(
         '--exclude',
@@ -75,17 +72,40 @@ def main(argv=None):
     parser.add_argument(
         '--dry',
         action = 'store_true',
-        help = 'Dry run.',
+        help = 'Dry run. Do not update the directories times.',
     )
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        '--report',
+        dest = 'report',
+        action = 'store_true',
+        default = True,
+        help = 'Report updates. Default on.',
+    )
+    parser.add_argument(
+        '--no-report',
+        dest = 'report',
+        action = 'store_false',
+        help = 'Do not report updates.',
+    )
+    return parser
 
+def exclude_from_args(args):
     if args.exclude:
         patterns = '|'.join(map(fnmatch.translate, args.exclude))
         exclude = re.compile(patterns).match
     else:
         exclude = lambda filename: False
 
-    run(args.root, args.dry, exclude)
+    return exclude
+
+def main(argv=None):
+    """
+    Update the directories to their newest file's datetime.
+    """
+    parser = argument_parser()
+    args = parser.parse_args(argv)
+    exclude = exclude_from_args(args)
+    run(args.root, args.dry, exclude, args.report)
 
 if __name__ == '__main__':
     main()
