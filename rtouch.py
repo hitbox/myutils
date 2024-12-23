@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 import argparse
-import datetime
 import fnmatch
 import os
 import re
 
+from datetime import datetime
 from operator import attrgetter
 from pathlib import Path
+
+no_files = object()
 
 def st_mtime(path):
     return path.stat().st_mtime
@@ -30,21 +32,21 @@ def run(root_path, dry_run=False, exclude=None, report=False):
     """
     for child_dir in Path(root_path).iterdir():
         if not child_dir.is_dir():
-            # skip not a directory
+            # skip non-directories
             continue
-        file_paths = list(walk_files(child_dir, exclude))
-        if not file_paths:
+        # Recursively find the newest file in this child dir of root.
+        newest_file = max(walk_files(child_dir, exclude), default=no_files)
+        if newest_file is no_files:
             # skip for no files
             continue
-        newest_file = max(file_paths, key=st_mtime)
         if newest_file.stat().st_mtime <= child_dir.stat().st_mtime:
             # skip for newest file is not newer than directory
             continue
         if report:
             print(child_dir)
             print(f'\t{newest_file}')
-            print(f'\tParent: {datetime.datetime.fromtimestamp(child_dir.stat().st_mtime)}')
-            print(f'\tNewest: {datetime.datetime.fromtimestamp(newest_file.stat().st_mtime)}')
+            print(f'\tParent: {datetime.fromtimestamp(child_dir.stat().st_mtime)}')
+            print(f'\tNewest: {datetime.fromtimestamp(newest_file.stat().st_mtime)}')
         if not dry_run:
             # update mtime, keeping atime
             atime = child_dir.stat().st_atime
