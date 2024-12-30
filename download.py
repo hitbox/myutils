@@ -1,3 +1,4 @@
+#!/home/hitbox/venv-ytdlp/bin/python
 #!/usr/bin/env python
 import argparse
 import configparser
@@ -5,12 +6,20 @@ import datetime
 import math
 import os
 import subprocess
+import sys
 import time
 
 from functools import cached_property
 from operator import attrgetter
 from operator import itemgetter
 from operator import xor
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    import rtouch
+except ImportError:
+    rtouch = None
 
 # special string to indicate ini option is a flag
 IS_FLAG_VALUE = ':flag:'
@@ -313,7 +322,7 @@ def parse_main(cp, jump_list=None):
     )
     return data
 
-def run(dlargs, config, jump_list=None, dry=False, use_intervals=True):
+def run(dlargs, config, jump_list=None, dry=False, use_intervals=True, no_rtouch=False):
     """
     Download the configured urls.
 
@@ -325,6 +334,7 @@ def run(dlargs, config, jump_list=None, dry=False, use_intervals=True):
     )
     cp.read(config)
     downloads = parse_main(cp, jump_list)
+    use_rtouch = not no_rtouch
     for spec in downloads.iter_enabled_specs():
         args, kwargs = spec.cmdargs(dlargs, downloads, use_intervals)
         if dry:
@@ -339,6 +349,9 @@ def run(dlargs, config, jump_list=None, dry=False, use_intervals=True):
             pass
         except KeyboardInterrupt:
             break
+        else:
+            if use_rtouch and rtouch:
+                rtouch.run(root_path=os.getcwd())
 
 def main(argv=None):
     parser = argparse.ArgumentParser()
@@ -358,8 +371,20 @@ def main(argv=None):
         action = 'store_true',
         help = 'Disable intervals',
     )
+    parser.add_argument(
+        '--no-rtouch',
+        action = 'store_true',
+        help = 'Disable rtouching the top dir.',
+    )
     args, dlargs = parser.parse_known_args(argv)
-    run(dlargs, args.config, args.jump, args.dry, not args.no_intervals)
+    run(
+        dlargs,
+        args.config,
+        jump_list = args.jump,
+        dry = args.dry,
+        use_intervals = not args.no_intervals,
+        no_rtouch = args.no_rtouch,
+    )
 
 if __name__ == '__main__':
     main()
