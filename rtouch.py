@@ -35,7 +35,7 @@ def run(root_path, dry_run=False, exclude=None, report=False):
             # skip non-directories
             continue
         # Recursively find the newest file in this child dir of root.
-        newest_file = max(walk_files(child_dir, exclude), default=no_files)
+        newest_file = max(walk_files(child_dir, exclude), default=no_files, key=st_mtime)
         if newest_file is no_files:
             # skip for no files
             continue
