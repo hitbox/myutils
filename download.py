@@ -10,10 +10,8 @@ import sys
 import time
 
 from functools import cached_property
-from operator import attrgetter
-from operator import itemgetter
-from operator import xor
 
+# Put this directory on the path to import rtouch.
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
@@ -21,8 +19,19 @@ try:
 except ImportError:
     rtouch = None
 
-# special string to indicate ini option is a flag
+# Special string to indicate ini option is a flag, meant to be added to
+# subprocess command without a value.
 IS_FLAG_VALUE = ':flag:'
+
+YT_DLP_FLAGS = set([
+    'playlist-reverse',
+])
+
+SPEC_KWARGS = set([
+    'enabled',
+    'urls',
+    'too_long_output',
+])
 
 class spec_order:
 
@@ -102,11 +111,23 @@ class DownloadData:
 
 
 class Spec:
+    """
+    Configuration options and methods to download using yt-dlp.
+    """
 
-    def __init__(self, *, name, enabled, urls=None, **extra):
+    def __init__(
+        self,
+        *,
+        name,
+        enabled,
+        urls = None,
+        too_long_output = None,
+        **extra,
+    ):
         self.name = name
         self.enabled = enabled
         self.urls = urls
+        self.too_long_output = too_long_output
         self.extra = extra
 
     def get_batch(self):
@@ -200,6 +221,7 @@ class Interval:
 
 def safepop(section, key, getfunc='get', default=None):
     """
+    Like .get but also .pop's.
     :param section:
         config section to pop from.
     :param key:
@@ -240,10 +262,14 @@ def parse_interval(section):
     return (section.name, Interval(from_dt, to_dt), remaining)
 
 def parse_spec(section):
+    """
+    Parse specific download specification.
+    """
     spec = Spec(
         name = section.name,
         enabled = safepop(section, 'enabled', 'getboolean'),
         urls = section.pop('urls', None),
+        too_long_output = safepop(section, 'too_long_output')
     )
     # add remaining after popping
     spec.extra.update(section)
@@ -260,23 +286,15 @@ def has_non_empty(path):
                 # non-empty line that's not a comment
                 return True
 
-def is_empty_batch(spec):
-    return (
-        'batch' in spec
-        and
-        spec['batch']
-        and not has_non_empty(spec['batch'])
-    )
-
 def add_remaining(args, data):
     for key, val in data.items():
-        if key == 'urls' or val is None:
+        if val is None or key in SPEC_KWARGS:
             continue
-        key = f'--{key}'
-        if val == IS_FLAG_VALUE:
-            args.append(key)
+        option = f'--{key}'
+        if key in YT_DLP_FLAGS:
+            args.append(option)
         else:
-            args.extend((key, val))
+            args.extend((option, val))
 
 def parse_main(cp, jump_list=None):
     if jump_list is None:
@@ -311,18 +329,37 @@ def parse_main(cp, jump_list=None):
         intervals = list(map(parse_interval, interval_sections))
 
     # parse download specifications
-    specs = sorted(specs_from_config(cp, keys), key=spec_order(jump_list))
+    sortkey = spec_order(jump_list)
+    specs = sorted(specs_from_config(cp, keys), key=sortkey)
 
-    data = DownloadData(
+    download_data = DownloadData(
         python_exe = python_exe,
         specs = specs,
         insert_path = insert_path,
         jump_list = jump_list,
         intervals = intervals,
     )
-    return data
+    return download_data
 
-def run(dlargs, config, jump_list=None, dry=False, use_intervals=True, no_rtouch=False):
+def get_filename(url, output_format):
+    """
+    Get the filename that yt-dlp would generate.
+    """
+    result = subprocess.run(
+        ["yt-dlp", "-o", output_format, "--print", "filename", url],
+        capture_output = True,
+        text = True,
+    )
+    return result.stdout.strip()
+
+def run(
+    dlargs,
+    config,
+    jump_list = None,
+    dry = False,
+    use_intervals = True,
+    no_rtouch = False,
+):
     """
     Download the configured urls.
 
@@ -343,8 +380,11 @@ def run(dlargs, config, jump_list=None, dry=False, use_intervals=True, no_rtouch
         if 'timeout' in kwargs:
             timeout = kwargs['timeout']
             print(f'{timeout=}')
+        kwargs.setdefault('check', True)
         try:
             completed = subprocess.run(args, **kwargs)
+        except subprocess.CalledProcessError:
+            pass
         except subprocess.TimeoutExpired:
             pass
         except KeyboardInterrupt:
@@ -353,7 +393,7 @@ def run(dlargs, config, jump_list=None, dry=False, use_intervals=True, no_rtouch
             if use_rtouch and rtouch:
                 rtouch.run(root_path=os.getcwd())
 
-def main(argv=None):
+def argument_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('config', nargs='+')
     parser.add_argument(
@@ -376,6 +416,10 @@ def main(argv=None):
         action = 'store_true',
         help = 'Disable rtouching the top dir.',
     )
+    return parser
+
+def main(argv=None):
+    parser = argument_parser()
     args, dlargs = parser.parse_known_args(argv)
     run(
         dlargs,
